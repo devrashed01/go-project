@@ -41,7 +41,7 @@ func run(args []string) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }() // nothing useful to do if close fails on exit
 
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {

@@ -53,7 +53,7 @@ func Load() (Config, error) {
 		},
 		DB: DB{
 			URL:      l.required("DATABASE_URL"),
-			MaxConns: int32(l.int("DB_MAX_CONNS", 10)),
+			MaxConns: l.int32("DB_MAX_CONNS", 10),
 		},
 	}
 
@@ -88,17 +88,19 @@ func (l *loader) required(key string) string {
 	return v
 }
 
-func (l *loader) int(key string, def int) int {
+// int32 parses a positive int32. Parsing with bitSize 32 makes strconv reject
+// values that would overflow, instead of silently wrapping around.
+func (l *loader) int32(key string, def int32) int32 {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
 		return def
 	}
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		l.errs = append(l.errs, fmt.Errorf("%s: must be an integer, got %q", key, v))
+	n, err := strconv.ParseInt(v, 10, 32)
+	if err != nil || n < 1 {
+		l.errs = append(l.errs, fmt.Errorf("%s: must be a positive integer, got %q", key, v))
 		return def
 	}
-	return n
+	return int32(n)
 }
 
 func (l *loader) duration(key string, def time.Duration) time.Duration {

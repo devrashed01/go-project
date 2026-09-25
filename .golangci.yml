@@ -1,5 +1,9 @@
 version: "2"
 
+run:
+  build-tags:
+    - integration # also lint the integration tests
+
 linters:
   enable:
     - bodyclose     # HTTP response bodies are closed

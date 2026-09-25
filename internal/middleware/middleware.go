@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -87,7 +88,7 @@ func Recoverer(log *slog.Logger) Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if rv := recover(); rv != nil {
-					if rv == http.ErrAbortHandler {
+					if err, ok := rv.(error); ok && errors.Is(err, http.ErrAbortHandler) {
 						panic(rv) // let net/http handle deliberate aborts
 					}
 					log.ErrorContext(r.Context(), "panic recovered",

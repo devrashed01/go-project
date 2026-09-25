@@ -23,9 +23,17 @@ func newTestServer(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func do(t *testing.T, method, url, body string) (*http.Response, map[string]any) {
+// result is a fully read HTTP response. Returning plain values (rather than
+// *http.Response) means callers never have to remember to close a body.
+type result struct {
+	status int
+	header http.Header
+	body   map[string]any
+}
+
+func do(t *testing.T, method, url, body string) result {
 	t.Helper()
-	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(t.Context(), method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,33 +42,33 @@ func do(t *testing.T, method, url, body string) (*http.Response, map[string]any)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	var out map[string]any
+	res := result{status: resp.StatusCode, header: resp.Header}
 	if resp.StatusCode != http.StatusNoContent {
-		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		if err := json.NewDecoder(resp.Body).Decode(&res.body); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
 	}
-	return resp, out
+	return res
 }
 
 func TestHandler_CreateAndGet(t *testing.T) {
 	srv := newTestServer(t)
 
-	resp, body := do(t, http.MethodPost, srv.URL+"/api/v1/tasks", `{"title":"Learn Go"}`)
-	if resp.StatusCode != http.StatusCreated {
-		t.Fatalf("create: status = %d, body = %v", resp.StatusCode, body)
+	res := do(t, http.MethodPost, srv.URL+"/api/v1/tasks", `{"title":"Learn Go"}`)
+	if res.status != http.StatusCreated {
+		t.Fatalf("create: status = %d, body = %v", res.status, res.body)
 	}
-	if loc := resp.Header.Get("Location"); loc != "/api/v1/tasks/1" {
+	if loc := res.header.Get("Location"); loc != "/api/v1/tasks/1" {
 		t.Errorf("Location = %q", loc)
 	}
 
-	resp, body = do(t, http.MethodGet, srv.URL+"/api/v1/tasks/1", "")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("get: status = %d", resp.StatusCode)
+	res = do(t, http.MethodGet, srv.URL+"/api/v1/tasks/1", "")
+	if res.status != http.StatusOK {
+		t.Fatalf("get: status = %d", res.status)
 	}
-	data := body["data"].(map[string]any)
+	data := res.body["data"].(map[string]any)
 	if data["title"] != "Learn Go" || data["status"] != "todo" {
 		t.Errorf("unexpected task: %v", data)
 	}
@@ -89,12 +97,12 @@ func TestHandler_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resp, body := do(t, tt.method, srv.URL+tt.path, tt.body)
-			if resp.StatusCode != tt.wantStatus {
-				t.Fatalf("status = %d, want %d (body %v)", resp.StatusCode, tt.wantStatus, body)
+			res := do(t, tt.method, srv.URL+tt.path, tt.body)
+			if res.status != tt.wantStatus {
+				t.Fatalf("status = %d, want %d (body %v)", res.status, tt.wantStatus, res.body)
 			}
-			if _, ok := body["error"]; !ok {
-				t.Errorf("error responses must have an \"error\" key, got %v", body)
+			if _, ok := res.body["error"]; !ok {
+				t.Errorf("error responses must have an \"error\" key, got %v", res.body)
 			}
 		})
 	}
@@ -105,23 +113,23 @@ func TestHandler_UpdateListDelete(t *testing.T) {
 	do(t, http.MethodPost, srv.URL+"/api/v1/tasks", `{"title":"one"}`)
 	do(t, http.MethodPost, srv.URL+"/api/v1/tasks", `{"title":"two"}`)
 
-	resp, body := do(t, http.MethodPatch, srv.URL+"/api/v1/tasks/1", `{"status":"done"}`)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("patch: status = %d, body = %v", resp.StatusCode, body)
+	res := do(t, http.MethodPatch, srv.URL+"/api/v1/tasks/1", `{"status":"done"}`)
+	if res.status != http.StatusOK {
+		t.Fatalf("patch: status = %d, body = %v", res.status, res.body)
 	}
 
-	_, body = do(t, http.MethodGet, srv.URL+"/api/v1/tasks?status=done", "")
-	if n := len(body["data"].([]any)); n != 1 {
+	res = do(t, http.MethodGet, srv.URL+"/api/v1/tasks?status=done", "")
+	if n := len(res.body["data"].([]any)); n != 1 {
 		t.Errorf("filter by status: got %d tasks, want 1", n)
 	}
 
-	resp, _ = do(t, http.MethodDelete, srv.URL+"/api/v1/tasks/1", "")
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("delete: status = %d", resp.StatusCode)
+	res = do(t, http.MethodDelete, srv.URL+"/api/v1/tasks/1", "")
+	if res.status != http.StatusNoContent {
+		t.Fatalf("delete: status = %d", res.status)
 	}
 
-	_, body = do(t, http.MethodGet, srv.URL+"/api/v1/tasks", "")
-	if n := len(body["data"].([]any)); n != 1 {
+	res = do(t, http.MethodGet, srv.URL+"/api/v1/tasks", "")
+	if n := len(res.body["data"].([]any)); n != 1 {
 		t.Errorf("after delete: got %d tasks, want 1", n)
 	}
 }

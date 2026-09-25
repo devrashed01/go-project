@@ -32,7 +32,7 @@ func newTestRepo(t *testing.T) *PostgresRepository {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatal(err)
