@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - bodyclose     # HTTP response bodies are closed
+    - errorlint     # errors compared with errors.Is / errors.As
+    - gocritic      # common style and correctness issues
+    - gosec         # security problems
+    - misspell
+    - noctx         # HTTP requests carry a context
+    - revive        # successor to golint
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
